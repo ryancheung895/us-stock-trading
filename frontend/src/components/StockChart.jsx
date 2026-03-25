@@ -69,7 +69,7 @@ export default function StockChart({ symbol }) {
     ])
       .then(([hist, ind, inf]) => {
         if (!controller.signal.aborted) {
-          setHistData(hist || [])
+          setHistData(Array.isArray(hist) ? hist : [])
           setIndData(ind)
           setInfo(inf)
           setLoading(false)
@@ -87,7 +87,7 @@ export default function StockChart({ symbol }) {
 
   // Build/update charts when data or options change
   useEffect(() => {
-    if (!mainRef.current || histData.length === 0) return
+    if (!mainRef.current || !Array.isArray(histData) || histData.length === 0) return
 
     // Destroy old charts
     if (chartsRef.current.main) { try { chartsRef.current.main.remove() } catch {} chartsRef.current.main = null }
