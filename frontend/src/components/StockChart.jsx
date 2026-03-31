@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createChart } from 'lightweight-charts'
 import { fetchHistory, fetchIndicators, fetchStockInfo } from '../api'
 
-const PERIODS = ['1D', '5D', '1M', '3M', '6M', '1Y', '2Y']
+const PERIODS = ['1D', '5D', '1M', '3M', '6M', '1Y', '2Y', '4H']
 const PERIOD_MAP = {
   '1D': { period: '1d', interval: '5m' },
   '5D': { period: '5d', interval: '15m' },
@@ -10,6 +10,7 @@ const PERIOD_MAP = {
   '3M': { period: '3mo', interval: '1d' },
   '6M': { period: '6mo', interval: '1d' },
   '1Y': { period: '1y', interval: '1d' },
+  '4H': { period: '1y', interval: '4h' },
   '2Y': { period: '2y', interval: '1d' },
 }
 
@@ -60,7 +61,7 @@ export default function StockChart({ symbol }) {
     setError(null)
 
     const { period, interval } = PERIOD_MAP[activePeriod]
-    const needsIndicators = ['1M', '3M', '6M', '1Y', '2Y'].includes(activePeriod)
+    const needsIndicators = ['1M', '3M', '6M', '1Y', '4H', '2Y'].includes(activePeriod)
 
     Promise.all([
       fetchHistory(symbol, period, interval),

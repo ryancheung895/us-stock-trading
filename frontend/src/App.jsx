@@ -6,6 +6,7 @@ import Watchlist from './components/Watchlist'
 import StockChart from './components/StockChart'
 import Signals from './components/Signals'
 import Backtest from './components/Backtest'
+import News from './components/News'
 
 const NAV_TABS = [
   {
@@ -13,6 +14,15 @@ const NAV_TABS = [
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
         <polyline points="3,17 8,12 12,15 16,8 21,11" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    ),
+  },
+  {
+    id: 'news', label: 'News',
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 0-2 2Z" strokeLinecap="round"/>
+        <path d="M18 14H8M18 10H8M12 6H8" strokeLinecap="round"/>
       </svg>
     ),
   },
@@ -132,6 +142,7 @@ export default function App() {
                 <StockChart symbol={selectedSymbol} />
               </div>
             )}
+            {activeTab === 'news' && <News symbol={selectedSymbol} />}
             {activeTab === 'signals' && <Signals symbol={selectedSymbol} />}
             {activeTab === 'backtest' && <Backtest symbol={selectedSymbol} />}
           </div>

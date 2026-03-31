@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import yfinance as yf
 import pandas as pd
 import pandas_ta as ta
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 import math
 
@@ -122,6 +122,33 @@ def _fetch_history(symbol: str, period: str, interval: str) -> list[dict]:
     return rows
 
 
+def _resample_to_4h(hist: pd.DataFrame) -> list[dict]:
+    """Resample an OHLCV DataFrame (with Datetime or Date index) to 4-hour bars."""
+    df = hist.copy()
+    time_col = "Datetime" if "Datetime" in df.columns else "Date"
+    df = df.set_index(time_col)
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index, utc=True)
+    # Ensure timezone-aware index
+    if df.index.tz is None:
+        df.index = df.index.tz_localize("UTC")
+    resampled = df[["Open", "High", "Low", "Close", "Volume"]].resample("4h").agg(
+        {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+    ).dropna(subset=["Open", "Close"])
+    rows = []
+    for ts, row in resampled.iterrows():
+        t = int(ts.timestamp())
+        rows.append({
+            "time": t,
+            "open": _safe_float(row["Open"]),
+            "high": _safe_float(row["High"]),
+            "low": _safe_float(row["Low"]),
+            "close": _safe_float(row["Close"]),
+            "volume": _safe_float(row["Volume"]),
+        })
+    return rows
+
+
 @app.get("/api/stock/{symbol}/history")
 def get_history(
     symbol: str,
@@ -135,7 +162,13 @@ def get_history(
             entry = _history_cache[cache_key]
             if (now - entry["fetched_at"]) < timedelta(minutes=5):
                 return entry["data"]
-        data = _fetch_history(symbol, period, interval)
+        if interval == "4h":
+            # yfinance does not natively support 4h; fetch 1h and resample
+            ticker = yf.Ticker(symbol.upper())
+            hist = ticker.history(period=period, interval="1h")
+            data = _resample_to_4h(hist.reset_index()) if not hist.empty else []
+        else:
+            data = _fetch_history(symbol, period, interval)
         _history_cache[cache_key] = {"data": data, "fetched_at": now}
         return data
     except Exception as e:
@@ -494,5 +527,78 @@ def get_backtest(
         }
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── News ─────────────────────────────────────────────────────────────────────
+_news_cache: dict = {}   # {symbol: {'data': [...], 'fetched_at': datetime}}
+
+
+def _extract_news_item(item: dict) -> dict:
+    """Normalise a yfinance news dict (handles both legacy and current formats)."""
+    # Current yfinance wraps content in item['content']
+    content = item.get("content", item)
+    if not isinstance(content, dict):
+        content = item
+
+    # Publisher / provider
+    provider = content.get("provider") or {}
+    if isinstance(provider, dict):
+        publisher = provider.get("displayName", "") or provider.get("name", "")
+    else:
+        publisher = str(provider)
+    publisher = publisher or content.get("publisher", "")
+
+    # URL
+    canonical = content.get("canonicalUrl") or {}
+    if isinstance(canonical, dict):
+        link = canonical.get("url", "")
+    else:
+        link = str(canonical)
+    link = link or content.get("link", "")
+
+    # Published timestamp → ISO string
+    pub_date = content.get("pubDate", "")
+    if not pub_date:
+        pts = content.get("providerPublishTime")
+        if pts:
+            pub_date = datetime.fromtimestamp(int(pts), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Thumbnail
+    thumbnail = ""
+    thumb = content.get("thumbnail") or {}
+    if isinstance(thumb, dict):
+        resolutions = thumb.get("resolutions") or []
+        if resolutions and isinstance(resolutions[0], dict):
+            thumbnail = resolutions[0].get("url", "")
+
+    return {
+        "title": content.get("title", ""),
+        "publisher": publisher,
+        "link": link,
+        "published_at": pub_date,
+        "summary": content.get("summary", ""),
+        "thumbnail": thumbnail,
+    }
+
+
+@app.get("/api/stock/{symbol}/news")
+def get_news(symbol: str):
+    try:
+        now = datetime.utcnow()
+        key = symbol.upper()
+        if key in _news_cache:
+            entry = _news_cache[key]
+            if (now - entry["fetched_at"]) < timedelta(minutes=15):
+                return entry["data"]
+
+        ticker = yf.Ticker(key)
+        raw_news = ticker.news or []
+        data = [_extract_news_item(item) for item in raw_news if isinstance(item, dict)]
+        # Filter out items with no title/link
+        data = [d for d in data if d["title"] or d["link"]]
+        _news_cache[key] = {"data": data, "fetched_at": now}
+        return data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

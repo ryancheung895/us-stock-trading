@@ -19,3 +19,6 @@ export const fetchSignals = (symbol) =>
 
 export const fetchBacktest = (symbol, strategy = 'sma_crossover', fast = 20, slow = 50, period = '2y') =>
   api.get(`/stock/${symbol}/backtest`, { params: { strategy, fast, slow, period } }).then(r => r.data)
+
+export const fetchNews = (symbol) =>
+  api.get(`/stock/${symbol}/news`).then(r => r.data)
